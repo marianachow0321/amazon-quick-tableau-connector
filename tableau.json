@@ -1,9 +1,15 @@
 {
-  "client_id": "https://marianachow0321.github.io/quick-mcp-clients/tableau.json",
+  "client_id": "https://marianachow0321.github.io/amazon-quick-tableau-connector/tableau.json",
   "client_name": "Amazon Quick Suite",
   "client_uri": "https://quicksight.aws.amazon.com",
   "redirect_uris": [
-    "https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback"
+    "https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback",
+    "https://us-west-2.quicksight.aws.amazon.com/sn/oauthcallback",
+    "https://eu-west-1.quicksight.aws.amazon.com/sn/oauthcallback",
+    "https://eu-central-1.quicksight.aws.amazon.com/sn/oauthcallback",
+    "https://ap-southeast-1.quicksight.aws.amazon.com/sn/oauthcallback",
+    "https://ap-southeast-2.quicksight.aws.amazon.com/sn/oauthcallback",
+    "https://ap-northeast-1.quicksight.aws.amazon.com/sn/oauthcallback"
   ],
   "grant_types": [
     "authorization_code",

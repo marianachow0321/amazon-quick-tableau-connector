@@ -1,89 +1,158 @@
-# quick-mcp-clients
+# amazon-quick-tableau-connector
 
-OAuth **Client ID Metadata Documents** for connecting Amazon Quick Suite to MCP
-servers whose authorization servers support them.
+Connect **Amazon Quick Suite** to **Tableau Cloud** using Tableau's hosted MCP
+server, with no proxy, no stored credentials, and per-user Tableau identity.
 
-## Why this exists
+This repo contains one file that matters: `tableau.json`, an OAuth **Client ID
+Metadata Document**. It is served over GitHub Pages and its URL is used
+directly as the Client ID in Quick's connector settings.
 
-Most vendors let a client obtain a client ID one of two ways:
+## Why a JSON file is the client ID
+
+Vendors let a client obtain a client ID in one of three ways:
 
 | Mechanism | Example | What you do |
 |---|---|---|
 | Dynamic Client Registration (RFC 7591) | Trello, Netlify | Nothing — the client self-registers |
-| Console-registered app | Jira, Zendesk | Create an app, copy client ID + secret |
+| Console-registered app | Jira, Zendesk, Figma | Create an app, copy client ID + secret |
+| **Client ID Metadata Document** | **Tableau Cloud** | **Host a JSON file; its URL is the client ID** |
 
-Tableau Cloud uses a third mechanism. Its authorization server advertises:
+Tableau Cloud's authorization server advertises:
 
 ```
-client_id_metadata_document_supported: true
+$ curl -s https://sso.online.tableau.com/.well-known/oauth-authorization-server \
+    | jq '{client_id_metadata_document_supported, registration_endpoint}'
+{
+  "client_id_metadata_document_supported": true,
+  "registration_endpoint": null
+}
 ```
 
-which means **the client ID is itself an HTTPS URL**. The authorization server
-fetches that URL and reads the client's metadata from the JSON document it
-returns. There is no registration endpoint and no console app to create.
+No registration endpoint, so there is nothing to register and no console app to
+create. Instead the client ID is an HTTPS URL, and the authorization server
+fetches it at request time to learn who the client is.
 
-Quick Suite's MCP connector form has a Client ID field but no way to register
-one with Tableau, so the document has to be hosted somewhere public. This repo
-hosts it via GitHub Pages.
+Quick Suite's MCP connector form has a Client ID field but no way to obtain one
+from Tableau — so the document has to be hosted publicly. That is all this repo
+does.
 
-## Contents
+## What happens at sign-in
 
-| File | Client ID URL |
-|---|---|
-| `tableau.json` | `https://marianachow0321.github.io/quick-mcp-clients/tableau.json` |
+```
+1. User clicks Connect in Quick
+2. Quick → https://sso.online.tableau.com/oauth2/authorize
+              ?client_id=https://marianachow0321.github.io/amazon-quick-tableau-connector/tableau.json
+              &code_challenge=...  (PKCE, no client secret)
+3. Tableau FETCHES that URL
+4. Tableau reads:
+      client_name                 → shown on the consent screen
+      redirect_uris               → validates Quick's callback
+      token_endpoint_auth_method  → "none", so PKCE and no secret
+5. User signs in to Tableau, consents
+6. Quick exchanges the code at /oauth2/token
+7. Tableau MCP makes REST API calls AS THAT USER
+```
 
-## Important constraints
-
-- **`client_id` must exactly equal the URL the document is served from.** The
-  document is self-referential; a mismatch is rejected.
-- **`redirect_uris` must contain Quick's callback**,
-  `https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback`. This is
-  region-specific — change it if your Quick account is not in `us-east-1`.
-- **`token_endpoint_auth_method` is `none`.** Tableau's authorization server
-  only advertises `none`, i.e. a public client using PKCE. There is no secret,
-  so Quick's "Public OAuth client" checkbox must be **checked**.
-- The document must be served over HTTPS and be **anonymously fetchable** —
-  the authorization server retrieves it server-side, unauthenticated.
-
-## No secrets here
-
-These documents contain only public client metadata: a name, redirect URIs,
-grant types, and requested scopes. Publishing them is inherent to how the
-mechanism works, not an oversight. Never add a client secret to this repo.
+Step 7 is the important one: the user's own Tableau permissions are enforced by
+Tableau, not approximated by us. Nothing here holds a credential.
 
 ## Quick Suite connector settings
 
 | Field | Value |
 |---|---|
-| MCP server endpoint | `https://mcp.tableau.com` (no path — `/mcp` returns 404) |
+| MCP server endpoint | `https://mcp.tableau.com` |
 | Authentication method | User authentication |
 | Auth configuration | Custom user based OAuth |
-| Client ID | the Pages URL of the relevant file above |
-| Public OAuth client | checked |
-| Client secret | *(blank)* |
+| Client ID | `https://marianachow0321.github.io/amazon-quick-tableau-connector/tableau.json` |
+| Public OAuth client | **checked** |
+| Client secret | *(leave blank)* |
 | Authorization URL | `https://sso.online.tableau.com/oauth2/authorize` |
 | Token URL | `https://sso.online.tableau.com/oauth2/token` |
 
+The endpoint is the bare host. `https://mcp.tableau.com/mcp` returns 404.
+
+## Constraints that will bite you
+
+- **`client_id` in the JSON must be byte-identical to the URL it is served
+  from.** The document is self-referential: that binding is what stops someone
+  else hosting a document claiming your client ID. A trailing slash breaks it.
+- **The repo must be public.** Tableau's authorization server fetches the
+  document server-side and unauthenticated. A private repo fails with an opaque
+  error.
+- **`token_endpoint_auth_method` is `none`.** Tableau advertises only `none`,
+  i.e. a public client using PKCE. Quick's "Public OAuth client" box must be
+  checked and the secret left empty.
+- **Quick's callback is region-scoped, not account-scoped.** Every Quick tenant
+  in a region shares one callback URL, which is why several are listed and why
+  this document is reusable by other accounts. Extra entries cost nothing —
+  Tableau only checks that the incoming URI is in the list.
+
+## Reusability
+
+Because the callbacks are regional, any Quick tenant in a listed region can use
+this same client ID URL unchanged. The trade-off is that they all appear to
+Tableau as one OAuth client named "Amazon Quick Suite" — Tableau's audit log
+records which *user* signed in, but not which tenant. An organisation wanting
+its own audit identity should host its own copy of this file.
+
+## No secrets here
+
+The document contains only public client metadata: a name, redirect URIs, grant
+types, and requested scopes. Publishing it is how the mechanism works, not an
+oversight. Never add a client secret to this repo.
+
 ## Setup
 
-1. Push this repo to GitHub as **public** — the document must be anonymously
-   fetchable.
+1. Push this repo to GitHub as **public**.
 2. Settings → Pages → Source `main`, folder `/ (root)`.
-3. Wait for the deployment, then verify before configuring Quick:
+3. Verify before configuring Quick — Pages takes a minute to publish:
 
    ```bash
-   curl -i https://marianachow0321.github.io/quick-mcp-clients/tableau.json
+   curl -i https://marianachow0321.github.io/amazon-quick-tableau-connector/tableau.json
    ```
 
-   Expect `HTTP 200` and `content-type: application/json`. If this 404s, Quick
-   will fail with an opaque error.
+   Expect `HTTP 200` and `content-type: application/json`.
+
+## Scopes requested
+
+| Scope | Grants |
+|---|---|
+| `tableau:mcp:content:read` | Browse site content |
+| `tableau:mcp:datasource:read` | Read data source metadata |
+| `tableau:mcp:workbook:read` | Read workbooks |
+| `tableau:mcp:view:read` | Read views |
+| `tableau:content:read` | General content read |
+| `tableau:viz_data_service:read` | Query data via the VizQL Data Service |
+
+All read-only. Tableau's full scope list also includes `view:download`,
+`insight:create`, and `insight_brief:create`; add them if you need them, but
+note some tools require entitlements (Pulse Insight Briefs need Tableau+, the
+full Metadata API needs Data Management) and will error at call time without
+them.
+
+## Alternatives, if this does not work
+
+| Approach | Effort | Identity | Holds a credential |
+|---|---|---|---|
+| This document | ~15 min | Per-user, Tableau-enforced | No |
+| Quick Desktop → Local MCP, `npx @tableau/mcp-server` with a PAT | ~5 min | Per-user | User's own env |
+| Self-hosted Tableau MCP + Direct Trust connected app | Days | Per-user, asserted | Yes, one site-wide secret |
+| Lambda proxy acting as its own OAuth server | Days | Either | Yes |
 
 ## Known unknown
 
-It is not confirmed whether Tableau requires the client ID URL's origin to
-match the redirect URI's origin. It does not here — the document is on
-`github.io`, the callback is on `amazonaws.com`. Some implementations of this
-pattern enforce same-origin; the IETF draft does not require it. If
-authorization fails with an invalid-client or invalid-redirect error, that
-constraint is the most likely cause, and the fallback is to serve this document
-from a host you control that can also receive the callback.
+It is not confirmed whether Tableau requires the client ID URL's origin to match
+the redirect URI's origin. It does not here — the document is on `github.io`,
+the callback is on `amazonaws.com`. The IETF draft does not require same-origin;
+some implementations of the pattern do. If authorization fails with an
+invalid-client or redirect-mismatch error, that constraint is the likely cause,
+and the workaround is to serve this document from a host that can also receive
+the callback — which in practice means a proxy, and the effort table above
+applies.
+
+## References
+
+- Tableau MCP docs — https://tableau.github.io/tableau-mcp/
+- Hosted Tableau MCP — https://tableau.github.io/tableau-mcp/docs/hosted-tableau-mcp
+- `EXCLUDE_TOOLS` site setting, for admins wanting to disable tool groups
+  server-side — see Admin controls on that page
