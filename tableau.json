@@ -1,0 +1,17 @@
+{
+  "client_id": "https://marianachow0321.github.io/quick-mcp-clients/tableau.json",
+  "client_name": "Amazon Quick Suite",
+  "client_uri": "https://quicksight.aws.amazon.com",
+  "redirect_uris": [
+    "https://us-east-1.quicksight.aws.amazon.com/sn/oauthcallback"
+  ],
+  "grant_types": [
+    "authorization_code",
+    "refresh_token"
+  ],
+  "response_types": [
+    "code"
+  ],
+  "token_endpoint_auth_method": "none",
+  "scope": "tableau:mcp:content:read tableau:mcp:datasource:read tableau:mcp:workbook:read tableau:mcp:view:read tableau:content:read tableau:viz_data_service:read"
+}
